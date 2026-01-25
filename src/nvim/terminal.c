@@ -232,8 +232,8 @@ static void emit_termrequest(void **argv)
   char *sequence = argv[1];
   size_t sequence_length = (size_t)argv[2];
   StringBuilder *pending_send = argv[3];
-  int row = (int)(intptr_t)argv[4];
-  int col = (int)(intptr_t)argv[5];
+  int vterm_row = (int)(intptr_t)argv[4];
+  int vterm_col = (int)(intptr_t)argv[5];
   size_t sb_deleted = (size_t)(intptr_t)argv[6];
   VTermTerminator terminator = (VTermTerminator)(intptr_t)argv[7];
 
@@ -256,9 +256,13 @@ static void emit_termrequest(void **argv)
 
   set_vim_var_string(VV_TERMREQUEST, sequence, (ptrdiff_t)sequence_length);
 
+  // Convert vterm row to buffer line number now that the buffer is synchronized.
+  // Adjust for any scrollback lines that were deleted since the sequence was received.
+  int line = row_to_linenr(term, vterm_row) - (int)(term->sb_deleted - sb_deleted);
+
   MAXSIZE_TEMP_ARRAY(cursor, 2);
-  ADD_C(cursor, INTEGER_OBJ(row - (int64_t)(term->sb_deleted - sb_deleted)));
-  ADD_C(cursor, INTEGER_OBJ(col));
+  ADD_C(cursor, INTEGER_OBJ(line));
+  ADD_C(cursor, INTEGER_OBJ(vterm_col));
 
   MAXSIZE_TEMP_DICT(data, 3);
   String termrequest = { .data = sequence, .size = sequence_length };
@@ -289,11 +293,12 @@ static void schedule_termrequest(Terminal *term)
   term->pending.send = xmalloc(sizeof(StringBuilder));
   kv_init(*term->pending.send);
 
-  int line = row_to_linenr(term, term->cursor.row);
+  // Store raw vterm cursor position - conversion to buffer line happens in emit_termrequest
+  // after the buffer is synchronized (sb_pending == 0).
   multiqueue_put(main_loop.events, emit_termrequest, (void *)(intptr_t)term->buf_handle,
                  xmemdup(term->termrequest_buffer.items, term->termrequest_buffer.size),
                  (void *)(intptr_t)term->termrequest_buffer.size, term->pending.send,
-                 (void *)(intptr_t)line, (void *)(intptr_t)term->cursor.col,
+                 (void *)(intptr_t)term->cursor.row, (void *)(intptr_t)term->cursor.col,
                  (void *)(intptr_t)term->sb_deleted,
                  (void *)(intptr_t)term->termrequest_terminator);
 }
