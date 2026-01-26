@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,6 +15,18 @@
 #include "vterm/state.c.generated.h"
 
 #define strneq(a, b, n) (strncmp(a, b, n) == 0)
+
+static void osc133_debug_log(const char *fmt, ...)
+{
+  FILE *log = fopen("osc133-debug.log", "a");
+  if (log) {
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(log, fmt, args);
+    va_end(args);
+    fclose(log);
+  }
+}
 
 // Primary Device Attributes (DA1) response.
 // We make this a global (extern) variable so that we can override it with FFI
@@ -432,6 +445,7 @@ static int on_control(uint8_t control, void *user)
 
   VTermPos oldpos = state->pos;
 
+  osc133_debug_log("[Control 0x%x]", control);
   switch (control) {
   case 0x07:  // BEL - ECMA-48 8.3.3
     if (state->callbacks && state->callbacks->bell) {
@@ -452,6 +466,7 @@ static int on_control(uint8_t control, void *user)
   case 0x0a:  // LF - ECMA-48 8.3.74
   case 0x0b:  // VT
   case 0x0c:  // FF
+    osc133_debug_log("[LF] ");
     linefeed(state);
     if (state->mode.newline) {
       state->pos.col = 0;
@@ -459,6 +474,7 @@ static int on_control(uint8_t control, void *user)
     break;
 
   case 0x0d:  // CR - ECMA-48 8.3.15
+    osc133_debug_log("[CR] ");
     state->pos.col = 0;
     break;
 
@@ -1094,6 +1110,8 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
 
 #define LEADER(l, b) ((l << 8) | b)
 #define INTERMED(i, b) ((i << 16) | b)
+
+  osc133_debug_log("[CSI 0x%x] ", intermed_byte << 16 | leader_byte << 8 | command);
 
   switch (intermed_byte << 16 | leader_byte << 8 | command) {
   case 0x40:  // ICH - ECMA-48 8.3.64

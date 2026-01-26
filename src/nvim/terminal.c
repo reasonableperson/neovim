@@ -260,6 +260,14 @@ static void emit_termrequest(void **argv)
   // Adjust for any scrollback lines that were deleted since the sequence was received.
   int line = row_to_linenr(term, vterm_row) - (int)(term->sb_deleted - sb_deleted);
 
+  // DEBUG: Log cursor position at emit time
+  FILE *log = fopen("nvim-terminal.log", "a");
+  if (log) {
+    fprintf(log, "[terminal.c emit_termrequest] vterm_row=%d, vterm_col=%d, sb_current=%zu, sb_deleted_now=%zu, sb_deleted_at_schedule=%zu, computed_line=%d\n",
+            vterm_row, vterm_col, term->sb_current, term->sb_deleted, sb_deleted, line);
+    fclose(log);
+  }
+
   MAXSIZE_TEMP_ARRAY(cursor, 2);
   ADD_C(cursor, INTEGER_OBJ(line));
   ADD_C(cursor, INTEGER_OBJ(vterm_col));
@@ -292,6 +300,15 @@ static void schedule_termrequest(Terminal *term)
 {
   term->pending.send = xmalloc(sizeof(StringBuilder));
   kv_init(*term->pending.send);
+
+  // DEBUG: Log cursor position when OSC is received
+  FILE *log = fopen("osc133-debug.log", "a");
+  if (log) {
+    fprintf(log, "[terminal.c schedule_termrequest] cursor.row=%d, cursor.col=%d, sb_current=%zu, sb_pending=%d, sb_deleted=%zu, seq=%.*s\n",
+            term->cursor.row, term->cursor.col, term->sb_current, term->sb_pending, term->sb_deleted,
+            (int)term->termrequest_buffer.size, term->termrequest_buffer.items);
+    fclose(log);
+  }
 
   // Store raw vterm cursor position - conversion to buffer line happens in emit_termrequest
   // after the buffer is synchronized (sb_pending == 0).
@@ -1383,6 +1400,15 @@ static int term_moverect(VTermRect dest, VTermRect src, void *data)
 static int term_movecursor(VTermPos new_pos, VTermPos old_pos, int visible, void *data)
 {
   Terminal *term = data;
+
+  // DEBUG: Log cursor movement
+  FILE *log = fopen("osc133-debug.log", "a");
+  if (log) {
+    fprintf(log, "[term_movecursor] old=(%d,%d) -> new=(%d,%d)\n",
+            old_pos.row, old_pos.col, new_pos.row, new_pos.col);
+    fclose(log);
+  }
+
   term->cursor.row = new_pos.row;
   term->cursor.col = new_pos.col;
   invalidate_terminal(term, -1, -1);
